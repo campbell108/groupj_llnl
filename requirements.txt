@@ -1,0 +1,9 @@
+torchvision
+torch
+pathlib
+PIL
+numpy 
+matplotlib
+random
+json
+IPython
