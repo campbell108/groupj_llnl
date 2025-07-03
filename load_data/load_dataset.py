@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 # From the provided material
 from torch.utils.data import Dataset, DataLoader
 from torchvision.transforms import ToTensor
@@ -7,6 +9,7 @@ from PIL import Image
 import numpy as np
 import random
 
+# This is function from Amar-S
 class MOVi_Dataset(Dataset):
     def __init__(self, 
                  root,
@@ -188,3 +191,59 @@ class MOVi_Dataset(Dataset):
 
         #print(matches)
         return matches # list of ['obj_0001', 'obj_0009',...]
+    
+
+# Making minimal changes
+# Inherit from the MOViDataset class
+# pass the movi dataset (collection of many frames)
+# and blow it up into a Dataset which has the tensor for each frame
+# This is a dataloader ready for task 1.1
+class MOVi_ImageDataset(MOVi_Dataset):
+    """
+    Loads the MOVi dataset from file, casting it in a form ready for Image Models.
+    One frame per sample.
+    Inherits from the MOVi_Dataset class - so requires the same args.
+    Example usage:
+    image_ds = MOVi_ImageDataset(root=ROOT_PATH, split = 'test', n_frames = 8, n_samples=30)
+    """
+    def __init__(self, n_cameras=6,nframe_sample=24,*args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.frame_indices = []
+        # Build a list of (scene, camera, object, frame_idx) for all frames
+        for scene in self.scenes:
+            for cam_id in [f'camera_{str(i).zfill(4)}' for i in range(n_cameras)]:  # assuming 6 cameras
+                obj_path = os.path.join(self.top_dir, scene, cam_id)
+                if not os.path.exists(obj_path):
+                    continue
+                object_ids = self.all_objects(obj_path)
+                for obj_id in object_ids:
+                    # Assume all videos have 24 frames (0..24)
+                    for frame_idx in range(nframe_sample):  # or use dynamic length if needed
+                        self.frame_indices.append((scene, cam_id, obj_id, frame_idx))
+    
+    def __len__(self):
+        return len(self.frame_indices)
+    
+    def __getitem__(self, idx):
+        scene, cam_id, obj_id, frame_idx = self.frame_indices[idx]
+        # Load a single frame for each modality
+        frame = self.load_cam_frames(scene, cam_id, frame_idx, frame_idx+1, 'rgba_full').squeeze(1)[:-1] # ensure we get RGB 
+        depth = self.load_cam_frames(scene, cam_id, frame_idx, frame_idx+1, 'depth_full').squeeze(1)
+        modal_mask = self.load_cam_frames(scene, cam_id, frame_idx, frame_idx+1, 'modal_masks').squeeze(1)
+        amodal_mask = self.load_obj_frames(scene, cam_id, obj_id, frame_idx, frame_idx+1, 'amodal_segs').squeeze(1)
+        amodal_content = self.load_obj_frames(scene, cam_id, obj_id, frame_idx, frame_idx+1, 'content').squeeze(1)
+        
+        modal_mask = (modal_mask * 255).to(torch.uint8)
+        
+        sample = {
+            'frame': frame,
+            'depth': depth,
+            'modal_mask': modal_mask,
+            'amodal_mask': amodal_mask,
+            'amodal_content': amodal_content,
+            'scene': scene,
+            'cam_id': cam_id,
+            'obj_id': obj_id,
+            'frame_idx': frame_idx
+        }
+        return sample
