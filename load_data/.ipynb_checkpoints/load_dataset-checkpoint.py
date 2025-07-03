@@ -9,6 +9,11 @@ from PIL import Image
 import numpy as np
 import random
 
+# Define some check variables
+N_SAMPLES_DOWNLOADED_TRAIN = 170
+N_SAMPLES_DOWNLOADED_TEST = 39
+N_TOT_FRAMES = 24
+
 # This is function from Amar-S
 class MOVi_Dataset(Dataset):
     def __init__(self, 
