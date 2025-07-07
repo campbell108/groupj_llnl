@@ -1,0 +1,5 @@
+- ignore `.ipynb_checkpoints` and `__pycache__` folders
+- task1-1.ipynb
+  - Task1.1 using a CNN with Max Pooling (max pooling makes it run faster)
+  - Simple train-test split with CIFAR10AmodalDataset and VOCdevkit, a few epochs
+  - The important thing here is the workflow
