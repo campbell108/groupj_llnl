@@ -10,8 +10,8 @@ import numpy as np
 import random
 
 # Define some check variables
-N_SAMPLES_DOWNLOADED_TRAIN = 170
-N_SAMPLES_DOWNLOADED_TEST = 39
+N_SCENES_DOWNLOADED_TRAIN = 170
+N_SCENES_DOWNLOADED_TEST = 39
 N_TOT_FRAMES = 24
 
 # This is function from Amar-S
@@ -56,7 +56,6 @@ class MOVi_Dataset(Dataset):
         
         assert n_frames <= N_TOT_FRAMES
         self.n_frames = n_frames
-        assert n_samples <= N_SAMPLES_DOWNLOADED_TRAIN
         self.n_samples = n_samples
 
     def __len__(self):
