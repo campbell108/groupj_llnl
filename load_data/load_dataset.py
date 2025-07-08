@@ -25,12 +25,23 @@ class MOVi_Dataset(Dataset):
                  ):
         """
         Initialize the MOVi dataset loader.
+        This dataloader picks a random scene (video sample), a random object, and a random camera view.
+        It will then load all frames from the chosen video and camera view, for its chosen object.
         
         Args:
             root: The root folder that holds the unzipped sample folders
             split: Which root subfolder to draw from (train or test)
             n_frames: How many consecutive frames to load
-            n_samples: How many samples to load
+            n_samples: How many samples to load. This is equal to the number of objects you want to load.
+            
+        The dataset returned will be in the form of a dictionary, containing keys:
+        'frames': RGB content, tensor with 3 channels, depth = n_frames (consecutive frames)
+        'depths': modal depths, tensor, binary single channel
+        'modal_masks': modal masks (occluded), binary single channel 
+        'amodal_masks': amodal masks, binary single channel
+        'amodal_content': RGB content, tensor with 3 channels
+        'metadata': A metadata dictionary, offering info on scene, camera, object ID, as well as the number of objects in the scene.
+            
         """
         print('Dataset init on', split)
 
@@ -140,18 +151,25 @@ class MOVi_Dataset(Dataset):
         stop = start+self.n_frames # end at 
 
         i = random.randint(0, 5) # pick a random camera
-        frames, depths, modal_masks, amodal_segs, amodal_content = self.load_camera(random_scene, cam_id = f'camera_{str(i).zfill(4)}', 
+        cam_id = f'camera_{str(i).zfill(4)}'
+        frames, depths, modal_masks, amodal_segs, amodal_content = self.load_camera(random_scene, cam_id = cam_id, 
                                                                                     obj_id = target_object_id, start = start, stop = stop)
         
         # Inflate modal masks to 255
         modal_masks = modal_masks*255
         modal_masks = modal_masks.to(torch.uint8)
+        # Add tracking info to the single sample
+        # this is one object, all frames
         sample = {
             'frames': frames,
             'depths': depths,
             'modal_masks': modal_masks,
             'amodal_masks': amodal_segs,
             'amodal_content': amodal_content,
+            'metadata': {'scene': str(random_scene),
+                         'cam_id': cam_id,
+                         'obj_id': str(target_object_id),
+                         'n_tot_objects_in_scene': len(all_object_ids)}
         }
         return sample
 
