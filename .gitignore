@@ -1,5 +1,5 @@
 # ignore all test_data files
 */test_data
 data
-.ipynb_checkpoints
+*.ipynb_checkpoints
 ethan_notes_to_self.md
