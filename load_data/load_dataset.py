@@ -14,7 +14,8 @@ N_SCENES_DOWNLOADED_TRAIN = 170
 N_SCENES_DOWNLOADED_TEST = 39
 N_TOT_FRAMES = 24
 
-# This is function from Amar-S
+# Current prod dataloader
+# This will correctly apply the modal_mask filtering to get a single object
 class MOVi_Dataset(Dataset):
     def __init__(self, 
                  root,
@@ -155,10 +156,13 @@ class MOVi_Dataset(Dataset):
                                                                                     obj_id = target_object_id, start = start, stop = stop)
         
         # Inflate modal masks to 255
-        modal_masks = modal_masks*255
-        modal_masks = modal_masks.to(torch.uint8)
-        # Add tracking info to the single sample
+        # No need - already done in load camera!!
+        # modal_masks = modal_masks*255
+        # modal_masks = modal_masks.to(torch.uint8)
+        obj_id_int = int(str(target_object_id).split(sep="_")[-1]) # get integer obj ID
+        modal_masks = (modal_masks == obj_id_int).int() # filter into a binary modal mask for the object
         # this is one object, all frames
+        # Add tracking info to the single sample
         sample = {
             'frames': frames,
             'depths': depths,
@@ -180,7 +184,9 @@ class MOVi_Dataset(Dataset):
                                             cam_id,
                                             start, stop,
                                             'modal_masks')
-
+        
+        # Inflate modal_segs from float to integers
+        # Should give one integer in range(0, Nobj-1)
         modal_segs = modal_segs*255
         modal_segs = modal_segs.int()
 
