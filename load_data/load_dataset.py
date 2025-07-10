@@ -13,6 +13,7 @@ import random
 N_SCENES_DOWNLOADED_TRAIN = 170
 N_SCENES_DOWNLOADED_TEST = 39
 N_TOT_FRAMES = 24
+N_MAX_TRIES = 10 # for filtering - will try 10 times to find sample that is on camera
 
 # Current prod dataloader
 # This will correctly apply the modal_mask filtering to get a single object
@@ -219,6 +220,107 @@ class MOVi_Dataset(Dataset):
 
         #print(matches)
         return matches # list of ['obj_0001', 'obj_0009',...]
+    
+
+# This is the modified function from Amar-S
+# Filtering element - rejects images if the sample is completely off screen
+class MOVi_Dataset_Filtered(MOVi_Dataset):
+    def __init__(self, 
+                 root,
+                 split = 'train' or 'test', 
+                 n_frames = 8,
+                 n_samples = 1000
+                 #box_format = 'xywh'
+                 ):
+        """
+        Initialize the MOVi dataset loader, with Filtering.
+        Inherits functions from the basic MOVi_Dataset.
+        Filtering ensures the modal_mask is not all zero, i.e., the object is not fully occluded.
+        This dataloader picks a random scene (video sample), a random object, and a random camera view.
+        It will then load all frames from the chosen video and camera view, for its chosen object.
+        
+        Args:
+            root: The root folder that holds the unzipped sample folders
+            split: Which root subfolder to draw from (train or test)
+            n_frames: How many consecutive frames to load
+            n_samples: How many samples to load. This is equal to the number of objects you want to load.
+            
+        The dataset returned will be in the form of a dictionary, containing keys:
+        'frames': RGB content, tensor with 3 channels, depth = n_frames (consecutive frames)
+        'depths': modal depths, tensor, binary single channel
+        'modal_masks': modal masks (occluded), binary single channel 
+        'amodal_masks': amodal masks, binary single channel
+        'amodal_content': RGB content, tensor with 3 channels
+        'metadata': A metadata dictionary, offering info on scene, camera, object ID, as well as the number of objects in the scene.
+            
+        """
+        print('Dataset init on', split)
+
+        self.split = split
+        self.top_dir = f'{root}/{split}/'
+        print('Init data top dir:', self.top_dir)
+
+        #self.box_format = box_format
+
+        # Get directories in data_dir/train-test
+        self.scenes = [entry for entry in os.listdir(self.top_dir) if os.path.isdir(os.path.join(self.top_dir, entry))]
+        
+        assert n_frames <= N_TOT_FRAMES
+        self.n_frames = n_frames
+        self.n_samples = n_samples
+
+    def __len__(self):
+        # In theory this could be like n_scenes*n_objects
+        # To get total number of (cam-invariant) objects
+        return self.n_samples
+
+
+    def __getitem__(self, idx):
+        """Selects item only if contains something"""
+        found = False
+        max_tries = N_MAX_TRIES
+        tries = 0
+        while not found and tries < max_tries:
+            # Select a random sample
+            random_scene = np.random.choice(self.scenes)
+            all_object_ids = self.all_objects(self.top_dir + random_scene + '/camera_0000/')
+            target_object_id = np.random.choice(all_object_ids)
+
+            start = random.randint(0, 24-self.n_frames)
+            stop = start + self.n_frames
+            i = random.randint(0, 5)
+            cam_id = f'camera_{str(i).zfill(4)}'
+            frames, depths, modal_masks, amodal_segs, amodal_content = self.load_camera(random_scene, cam_id=cam_id, 
+                                                                                        obj_id=target_object_id, 
+                                                                                        start=start, stop=stop)
+            # Inflate modal masks to 255
+            # No need - already done in load camera!!
+            # modal_masks = modal_masks*255
+            # modal_masks = modal_masks.to(torch.uint8)
+            obj_id_int = int(str(target_object_id).split(sep="_")[-1]) # get integer obj ID
+            modal_masks = (modal_masks == obj_id_int).int() # filter into a binary modal mask for the object
+
+            # Check if modal_mask contains any nonzero pixels
+            # We reject the sample if the object is fully occluded (modal mask all zero)
+            if modal_masks.sum() > 0:
+                found = True
+                sample = {
+                    'frames': frames,
+                    'depths': depths,
+                    'modal_masks': modal_masks,
+                    'amodal_masks': amodal_segs,
+                    'amodal_content': amodal_content,
+                    'metadata': {'scene': str(random_scene),
+                                'cam_id': cam_id,
+                                'obj_id': str(target_object_id),
+                                'n_tot_objects_in_scene': len(all_object_ids)}
+                }
+                return sample
+            else:
+                tries += 1
+
+        # If no valid sample found after max_tries
+        raise RuntimeError("Failed to find a valid sample with nonzero modal_mask after {} tries".format(max_tries))
     
 
 # Making minimal changes
