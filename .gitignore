@@ -1,5 +1,6 @@
-# ignore all test_data files
+*.txt
 */test_data
 data
 *.ipynb_checkpoints
 ethan_notes_to_self.md
+*/frames*
