@@ -4,3 +4,4 @@ data
 *.ipynb_checkpoints
 ethan_notes_to_self.md
 */frames*
+*__pycache__
