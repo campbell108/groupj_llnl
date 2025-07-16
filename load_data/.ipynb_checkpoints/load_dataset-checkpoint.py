@@ -321,7 +321,8 @@ class MOVi_Dataset_Filtered(MOVi_Dataset):
                     'metadata': {'scene': str(random_scene),
                                 'cam_id': cam_id,
                                 'obj_id': str(target_object_id),
-                                'n_tot_objects_in_scene': len(all_object_ids)}
+                                'n_tot_objects_in_scene': len(all_object_ids),
+                                'foreground_ratio': foreground_ratio}
                 }
                 return sample
             else:
