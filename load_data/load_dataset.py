@@ -168,6 +168,7 @@ class MOVi_Dataset(Dataset):
             'frames': frames,
             'depths': depths,
             'modal_masks': modal_masks,
+            'modal_rgb': modal_masks * frames,
             'amodal_masks': amodal_segs,
             'amodal_content': amodal_content,
             'metadata': {'scene': str(random_scene),
@@ -229,7 +230,8 @@ class MOVi_Dataset_Filtered(MOVi_Dataset):
                  root,
                  split = 'train' or 'test', 
                  n_frames = 8,
-                 n_samples = 1000
+                 n_samples = 1000,
+                 foreground_ratio_thresh = 0.1
                  #box_format = 'xywh'
                  ):
         """
@@ -244,6 +246,7 @@ class MOVi_Dataset_Filtered(MOVi_Dataset):
             split: Which root subfolder to draw from (train or test)
             n_frames: How many consecutive frames to load
             n_samples: How many samples to load. This is equal to the number of objects you want to load.
+            foreground_ratio_thresh: (float) minimum no of pixels in the modal mask that have to be non-zero
             
         The dataset returned will be in the form of a dictionary, containing keys:
         'frames': RGB content, tensor with 3 channels, depth = n_frames (consecutive frames)
@@ -268,6 +271,7 @@ class MOVi_Dataset_Filtered(MOVi_Dataset):
         assert n_frames <= N_TOT_FRAMES
         self.n_frames = n_frames
         self.n_samples = n_samples
+        self.foreground_ratio_thresh = foreground_ratio_thresh
 
     def __len__(self):
         # In theory this could be like n_scenes*n_objects
@@ -297,17 +301,21 @@ class MOVi_Dataset_Filtered(MOVi_Dataset):
             # No need - already done in load camera!!
             # modal_masks = modal_masks*255
             # modal_masks = modal_masks.to(torch.uint8)
+            # Select the integer obj id
             obj_id_int = int(str(target_object_id).split(sep="_")[-1]) # get integer obj ID
             modal_masks = (modal_masks == obj_id_int).int() # filter into a binary modal mask for the object
 
             # Check if modal_mask contains any nonzero pixels
             # We reject the sample if the object is fully occluded (modal mask all zero)
+            foreground_ratio = modal_masks.sum() / modal_masks.numel()
+            # if foreground_ratio > self.foreground_ratio_thresh:
             if modal_masks.sum() > 0:
                 found = True
                 sample = {
                     'frames': frames,
                     'depths': depths,
                     'modal_masks': modal_masks,
+                    'modal_rgb': modal_masks * frames,
                     'amodal_masks': amodal_segs,
                     'amodal_content': amodal_content,
                     'metadata': {'scene': str(random_scene),
