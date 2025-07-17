@@ -169,7 +169,6 @@ class MOVi_Dataset(Dataset):
             'frames': frames,
             'depths': depths,
             'modal_masks': modal_masks,
-            'modal_rgb': modal_masks * frames,
             'amodal_masks': amodal_segs,
             'amodal_content': amodal_content,
             'metadata': {'scene': str(random_scene),
@@ -316,7 +315,6 @@ class MOVi_Dataset_Filtered(MOVi_Dataset):
                     'frames': frames,
                     'depths': depths,
                     'modal_masks': modal_masks,
-                    'modal_rgb': modal_masks * frames,
                     'amodal_masks': amodal_segs,
                     'amodal_content': amodal_content,
                     'metadata': {'scene': str(random_scene),
@@ -522,7 +520,6 @@ class MOVi_Dataset_SmartSelect(MOVi_Dataset):
             'frames': frames,
             'depths': depths,
             'modal_masks': modal_masks,
-            'modal_rgb': modal_masks * frames,
             'amodal_masks': amodal_segs,
             'amodal_content': amodal_content,
             'metadata': random_sample.to_dict()
