@@ -8,12 +8,16 @@ import torch
 from PIL import Image
 import numpy as np
 import random
+import pandas as pd
 
 # Define some check variables
 N_SCENES_DOWNLOADED_TRAIN = 170
 N_SCENES_DOWNLOADED_TEST = 39
 N_TOT_FRAMES = 24
 N_MAX_TRIES = 10 # for filtering - will try 10 times to find sample that is on camera
+
+# Datapath
+
 
 # Current prod dataloader
 # This will correctly apply the modal_mask filtering to get a single object
@@ -168,7 +172,6 @@ class MOVi_Dataset(Dataset):
             'frames': frames,
             'depths': depths,
             'modal_masks': modal_masks,
-            'modal_rgb': modal_masks * frames,
             'amodal_masks': amodal_segs,
             'amodal_content': amodal_content,
             'metadata': {'scene': str(random_scene),
@@ -315,7 +318,6 @@ class MOVi_Dataset_Filtered(MOVi_Dataset):
                     'frames': frames,
                     'depths': depths,
                     'modal_masks': modal_masks,
-                    'modal_rgb': modal_masks * frames,
                     'amodal_masks': amodal_segs,
                     'amodal_content': amodal_content,
                     'metadata': {'scene': str(random_scene),
@@ -386,3 +388,146 @@ class MOVi_ImageDataset(MOVi_Dataset):
             'frame_idx': frame_idx
         }
         return sample
+    
+
+# Existing dataset class inherited
+# This extension
+class MOVi_Dataset_SmartSelect(MOVi_Dataset):
+    def __init__(self, 
+                 root,
+                 metadata_root="../dataset_metadata",
+                 split = 'train' or 'test', 
+                 n_frames = 8,
+                 n_samples = 100,
+                 min_modal_pixels_visible = 10,
+                 min_occ_rate = 0.5,
+                 max_occ_rate = 0.9,
+                 #box_format = 'xywh'
+                 ):
+        """
+        Initialize the MOVi dataset loader, with Dataset Smart selection.
+        Inherits functions from the basic MOVi_Dataset.
+        Smart Selection works by ensuring certain conditions are met: modal_mask is not all zero, i.e., the object is not fully occluded,
+        the occlusion rate is high enough to learn something meaningful about completion etc. This uses dataset metadata.
+        This dataloader picks a random scene (video sample), a random object, and a random camera view.
+        It will then load all frames from the chosen video and camera view, for its chosen object.
+        
+        Args:
+            root: The root folder that holds the unzipped sample folders
+            split: Which root subfolder to draw from (train or test)
+            n_frames: How many consecutive frames to load. Defaults to 8.
+            n_samples: How many samples to load. This is equal to the number of objects you want to load. Defaults to 100.
+            min_modal_pixels_visible (int): How many object pixels have to be visible in the modal image to be accepted. In the case of video,
+                this criterion is applied on the average number of modal pixels visible. Defaults to 10.
+            min_occ_rate (float): Minimum object occlusion rate. This the ratio of modal pixels/number of amodal pixels. 0 to 1,
+                defaults to 0.5. For videos, this is the average across N_FRAMES.
+            max_occ_rate (float): Maximum object occlusion rate to accept. 0 to 1, defaults to 0.9. Must be bigger than min_occ_rate.
+            
+        The dataset returned will be in the form of a dictionary, containing keys:
+        'frames': RGB content, tensor with 3 channels, depth = n_frames (consecutive frames)
+        'depths': modal depths, tensor, binary single channel
+        'modal_masks': modal masks (occluded), binary single channel 
+        'amodal_masks': amodal masks, binary single channel
+        'amodal_content': RGB content, tensor with 3 channels
+        'metadata': A metadata dictionary, offering info on scene, camera, object ID, as well as the number of objects in the scene.
+            
+        """
+        print('Dataset init on', split)
+
+        self.split = split
+        self.top_dir = f'{root}/{split}/'
+        print('Init data top dir:', self.top_dir)
+
+        #self.box_format = box_format
+
+        # Get directories in data_dir/train-test
+        self.scenes = [entry for entry in os.listdir(self.top_dir) if os.path.isdir(os.path.join(self.top_dir, entry))]
+        
+        assert n_frames <= N_TOT_FRAMES
+        self.n_frames = n_frames
+        self.n_samples = n_samples
+
+        assert min_occ_rate < max_occ_rate
+        
+        # Perform dataset selection
+        self.image = False
+        if n_frames == 1:
+            # Load image metadata
+            df = pd.read_csv(f"{metadata_root}/{split}_per_frame_metadata.csv", index_col=0)
+            # Apply criteria
+            df_select = df[(df['scene_id'].isin(self.scenes)) &
+                        (df['occ_rate'] >= min_occ_rate) &
+                        (df['occ_rate'] <= max_occ_rate) &
+                        (df['modal_n_pixels_foreground'] >= min_modal_pixels_visible)].copy().reset_index(drop=True)
+            self.image = True
+        else:
+            # loading video data
+            self.image = False
+            df = pd.read_csv(f"{metadata_root}/{split}_video_metadata.csv", index_col=0)
+            # Apply criteria
+            df_select = df[(df['scene_id'].isin(self.scenes)) &
+                        (df['avg_occ_rate'] >= min_occ_rate) &
+                        (df['avg_occ_rate'] <= max_occ_rate) &
+                        (df['avg_modal_n_pixels_foreground'] >= min_modal_pixels_visible)].copy().reset_index(drop=True)
+            
+        n_available = len(df_select)
+        if n_available < n_samples:
+            print("WARNING: Your requested n_samples is smaller than the number of samples meeting your criteria. Chance of getting duplicates.")
+        self.df_select = df_select
+
+
+    def __len__(self):
+        # In theory this could be like n_scenes*n_objects
+        # To get total number of (cam-invariant) objects
+        return self.n_samples
+
+
+    def __getitem__(self, idx):
+        """
+        Selects item only if it fulfils the criteria
+        """
+        df = self.df_select.copy()
+        # Select a random scene - camera - object sample from the selected
+        # this is now a dictionary
+        random_sample = df.iloc[np.random.choice(df.index)]
+
+        # Write out scene - camera - obj choice
+        random_scene = random_sample['scene_id']
+        # Random camera - all scenes should have cam 0000 to cam 0005
+        cam_id = random_sample['cam_id']
+        target_object_id = 'obj_{}'.format(str(random_sample['obj_id']).zfill(4))
+
+        # Now select frames
+        if self.image:
+            # Select a single random frame fulfiling the criteria
+            start = random_sample['frame_id']
+            stop = start + 1
+        else:
+            # Select random frames for video
+            start = random.randint(0, 24-self.n_frames)
+            stop = start + self.n_frames
+        
+        frames, depths, modal_masks, amodal_segs, amodal_content = self.load_camera(random_scene, cam_id=cam_id, 
+                                                                                    obj_id=target_object_id, 
+                                                                                    start=start, stop=stop)
+        # Inflate modal masks to 255
+        # No need - already done in load camera!!
+        # modal_masks = modal_masks*255
+        # modal_masks = modal_masks.to(torch.uint8)
+        # Select the integer obj id
+        obj_id_int = int(str(target_object_id).split(sep="_")[-1]) # get integer obj ID
+        modal_masks = (modal_masks == obj_id_int).int() # filter into a binary modal mask for the object
+
+        # Check if modal_mask contains any nonzero pixels
+        # We reject the sample if the object is fully occluded (modal mask all zero)
+        sample = {
+            'frames': frames,
+            'depths': depths,
+            'modal_masks': modal_masks,
+            'amodal_masks': amodal_segs,
+            'amodal_content': amodal_content,
+            'metadata': random_sample.to_dict()
+        }
+        return sample
+    
+    

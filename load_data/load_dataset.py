@@ -16,6 +16,9 @@ N_SCENES_DOWNLOADED_TEST = 39
 N_TOT_FRAMES = 24
 N_MAX_TRIES = 10 # for filtering - will try 10 times to find sample that is on camera
 
+# Datapath
+
+
 # Current prod dataloader
 # This will correctly apply the modal_mask filtering to get a single object
 class MOVi_Dataset(Dataset):
@@ -392,6 +395,7 @@ class MOVi_ImageDataset(MOVi_Dataset):
 class MOVi_Dataset_SmartSelect(MOVi_Dataset):
     def __init__(self, 
                  root,
+                 metadata_root="../dataset_metadata",
                  split = 'train' or 'test', 
                  n_frames = 8,
                  n_samples = 100,
@@ -449,7 +453,7 @@ class MOVi_Dataset_SmartSelect(MOVi_Dataset):
         self.image = False
         if n_frames == 1:
             # Load image metadata
-            df = pd.read_csv(f"../dataset_metadata/{split}_per_frame_metadata.csv", index_col=0)
+            df = pd.read_csv(f"{metadata_root}/{split}_per_frame_metadata.csv", index_col=0)
             # Apply criteria
             df_select = df[(df['scene_id'].isin(self.scenes)) &
                         (df['occ_rate'] >= min_occ_rate) &
@@ -459,7 +463,7 @@ class MOVi_Dataset_SmartSelect(MOVi_Dataset):
         else:
             # loading video data
             self.image = False
-            df = pd.read_csv(f"../dataset_metadata/{split}_video_metadata.csv", index_col=0)
+            df = pd.read_csv(f"{metadata_root}/{split}_video_metadata.csv", index_col=0)
             # Apply criteria
             df_select = df[(df['scene_id'].isin(self.scenes)) &
                         (df['avg_occ_rate'] >= min_occ_rate) &
