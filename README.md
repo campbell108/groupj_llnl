@@ -5,9 +5,6 @@ Final Due Date: July 24
 
 ## Installation Instructions
 
-## Notes
-- Disclaimer: Please keep the repo as clean as possible. If there are files you just use for scratch and we don't really need them in the repo, please add the file name (file path) to `.gitignore`.
-
 ### Jul 14 Meeting Notes:
 
 
